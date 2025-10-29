@@ -1,9 +1,3 @@
-// server.js
-// Minimal WebSocket backend for the realtime whiteboard.
-// - Keeps an in-memory map of rooms -> { users: Map, shapes: Map }
-// - Supports messages: {type: 'join', name}, {type: 'update', shapes: [...]}, {type: 'remove', shapeIds: [...]}
-// - Broadcasts to other clients in the same room only
-
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 8081;
@@ -21,21 +15,23 @@ function safeSend(ws, obj) {
   try {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
   } catch (e) {
-    // ignore send errors for now
+    console.error('Error sending message to client:', e);
   }
 }
 
 function broadcastToRoom(roomId, obj, exceptWs = null) {
   const msg = JSON.stringify(obj);
+  const exceptUserId = exceptWs?.userId; 
   wss.clients.forEach((client) => {
     if (client.readyState !== WebSocket.OPEN) return;
     if (client.roomId !== roomId) return;
-    if (exceptWs && client === exceptWs) return;
-    try { client.send(msg); } catch (e) { /* ignore */ }
+    if (exceptUserId && client.userId === exceptUserId) return; 
+    try { client.send(msg); } catch (e) { console.error('Error broadcasting to client:', e); }
   });
 }
 
-function broadcastUsers(roomId) {
+
+function broadcastUsers(roomId , userId) {
   const room = ensureRoom(roomId);
   const users = Array.from(room.users.entries()).map(([id, name]) => ({ id, name }));
   broadcastToRoom(roomId, { type: 'users', users });
@@ -51,7 +47,7 @@ wss.on('connection', (ws, req) => {
   const room = ensureRoom(roomId);
 
   // temporary holder for the user's id/name on this socket
-  ws.userId = null;
+  ws.userId = crypto.randomUUID();
   ws.userName = 'Anonymous';
 
   ws.on('message', (raw) => {
@@ -74,7 +70,7 @@ wss.on('connection', (ws, req) => {
         room.users.set(userId, name);
 
         // send current shapes as an init message
-        safeSend(ws, { type: 'init', shapes: Array.from(room.shapes.values()) });
+        safeSend(ws, { type: 'init', shapes: Array.from(room.shapes.values()) ,id : userId });
 
         // broadcast updated users list to room
         broadcastUsers(roomId);

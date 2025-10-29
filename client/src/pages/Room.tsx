@@ -5,27 +5,32 @@ import 'tldraw/tldraw.css';
 
 interface User { id: string; name: string; }
 
+
 const Room = () => {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const store = useMemo(() => createTLStore(), []);
-  // stable websocket ref so it is not recreated on re-renders
   const socketRef = useRef<WebSocket | null>(null);
-  // avoid echoing remote changes while applying
   const applyingRemoteRef = useRef(false);
-  // record recently-sent local shape ids (kept for safety, not required if server excludes sender)
   const recentLocalRef = useRef<Map<string, number>>(new Map());
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  const [mousePressed, setMousepressed] = useState(false);
+
 
   const userName = sessionStorage.getItem('username') || `User-${Math.floor(Math.random()*1000)}`;
+  function logMouseUp() {
+    setMousepressed(!mousePressed);
+  }
+
 
   useEffect(() => {
     if (!roomId) {
       console.warn('No roomId provided');
       return;
     }
+    
 
     console.log('Connecting to room:', roomId, 'as:', userName);
     const ws = new WebSocket(`ws://localhost:8081/${roomId}`);
@@ -35,6 +40,7 @@ const Room = () => {
       console.log('WebSocket open');
       setIsConnected(true);
       ws.send(JSON.stringify({ type: 'join', name: userName }));
+      
     });
 
     ws.addEventListener('error', (err) => {
@@ -83,7 +89,9 @@ const Room = () => {
       try { ws.close(); } catch (e) {}
       socketRef.current = null;
     };
-  }, [roomId, userName, store]);
+  }, []);
+
+
   useEffect(() => {
     const cleanup = store.listen((entry) => {
       try {
@@ -133,11 +141,11 @@ const Room = () => {
     });
 
     return cleanup;
-  }, [store]);
+  }, [mousePressed]);
 
   // Render
   return (
-    <div style={{ position: 'relative', height: '100vh' }}>
+    <div style={{ position: 'relative', height: '100vh' }} >
       {/* Top center controls */}
       <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, display: 'flex', gap: 8 , color:'black' }}>
         <button
@@ -173,10 +181,7 @@ const Room = () => {
         <div style={{ marginLeft: 8, color: 'rgba(0,0,0,0.75)', fontSize: 13 }}>Status: {isConnected ? 'Connected' : 'Disconnected'}</div>
       </div>
 
-      {/* small inline users summary bottom-left */}
-      <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 900, background: 'rgba(255,255,255,0.9)', padding: 8, borderRadius: 8, boxShadow: '0 4px 12px rgba(2,6,23,0.06)' }}>
-        <div style={{ marginTop: 0 }}>Users online: {onlineUsers.map(u => u.name).join(', ') || 'None'}</div>
-      </div>
+     
 
       {/* expanded users panel */}
       {showUsers && (
@@ -235,8 +240,8 @@ const Room = () => {
       )}
 
       {/* the canvas */}
-      <div style={{ height: '100%' }}>
-  <Tldraw store={store} />
+      <div style={{ height: '100%' } }onMouseUp={() => logMouseUp()}>
+  <Tldraw store={store}  />
       </div>
     </div>
   );
