@@ -58,7 +58,7 @@ wss.on('connection', (ws, req) => {
       console.error('Invalid JSON from client:', e);
       return;
     }
-
+    console.log(data);
     if (!data || !data.type) return;
 
     switch (data.type) {

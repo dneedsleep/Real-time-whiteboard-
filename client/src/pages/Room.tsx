@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { createTLStore, Tldraw } from 'tldraw';
 import 'tldraw/tldraw.css';
 
+const URL = process.env.VITE_WS_URL ;
+
 interface User { id: string; name: string; }
 
 
@@ -27,13 +29,13 @@ const Room = () => {
 
   useEffect(() => {
     if (!roomId) {
-      console.warn('No roomId provided');
+      alert('No roomId provided');
       return;
     }
     
 
     console.log('Connecting to room:', roomId, 'as:', userName);
-    const ws = new WebSocket(`ws://localhost:8081/${roomId}`);
+    const ws = new WebSocket(`${URL}/${roomId}`);
     socketRef.current = ws;
 
     ws.addEventListener('open', () => {
@@ -90,58 +92,65 @@ const Room = () => {
       socketRef.current = null;
     };
   }, []);
+  
+  // Buffer to collect shape updates before sending
+const updateBuffer = useRef<any[]>([]);
+const deleteBuffer = useRef<string[]>([]);
+const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+
+// Debounce function to send updates
+function flushUpdates() {
+  const ws = socketRef.current;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  if (updateBuffer.current.length > 0) {
+    ws.send(JSON.stringify({ type: 'update', shapes: updateBuffer.current }));
+    updateBuffer.current = [];
+  }
+  if (deleteBuffer.current.length > 0) {
+    ws.send(JSON.stringify({ type: 'remove', shapeIds: deleteBuffer.current }));
+    deleteBuffer.current = [];
+  }
+}
 
 
   useEffect(() => {
-    const cleanup = store.listen((entry) => {
-      try {
-        // don't send while applying remote updates (prevents echo)
-        if (applyingRemoteRef.current) return;
+  const cleanup = store.listen((entry) => {
+    if (applyingRemoteRef.current) return;
 
-        const { added = {}, updated = {}, removed = {} } = entry.changes as any;
+    const { added = {}, updated = {}, removed = {} } = entry.changes as any;
+    const now = Date.now();
 
-        const updates: any[] = [];
-        const deletes: string[] = [];
-
-        for (const id in added) {
-          const rec = (added as any)[id];
-          if (rec?.typeName === 'shape') updates.push(rec);
-        }
-
-        for (const id in updated) {
-          const pair = (updated as any)[id];
-          const next = pair && pair[1];
-          if (next?.typeName === 'shape') updates.push(next);
-        }
-
-        for (const id in removed) {
-          // removed may be a record-like object or just ids
-          const rec = (removed as any)[id];
-          if (rec?.typeName === 'shape') deletes.push(id);
-          else deletes.push(id);
-        }
-
-        const ws = socketRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-        if (updates.length > 0) {
-          const now = Date.now();
-          for (const s of updates) if (s?.id) recentLocalRef.current.set(s.id, now);
-          ws.send(JSON.stringify({ type: 'update', shapes: updates }));
-        }
-
-        if (deletes.length > 0) {
-          const now = Date.now();
-          for (const id of deletes) recentLocalRef.current.set(id, now);
-          ws.send(JSON.stringify({ type: 'remove', shapeIds: deletes }));
-        }
-      } catch (err) {
-        console.error('Error in store listener', err);
+    for (const id in added) {
+      const rec = (added as any)[id];
+      if (rec?.typeName === 'shape') {
+        recentLocalRef.current.set(rec.id, now);
+        updateBuffer.current.push(rec);
       }
-    });
+    }
 
-    return cleanup;
-  }, [mousePressed]);
+    for (const id in updated) {
+      const pair = (updated as any)[id];
+      const next = pair && pair[1];
+      if (next?.typeName === 'shape') {
+        recentLocalRef.current.set(next.id, now);
+        updateBuffer.current.push(next);
+      }
+    }
+
+    for (const id in removed) {
+      const rec = (removed as any)[id];
+      deleteBuffer.current.push(rec?.id ?? id);
+    }
+
+    // Debounce: wait 100ms after last change before sending
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => flushUpdates(), 100);
+  });
+
+  return cleanup;
+}, []);
+
 
   // Render
   return (
