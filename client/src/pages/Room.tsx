@@ -4,6 +4,7 @@ import { createTLStore, Tldraw } from 'tldraw';
 import 'tldraw/tldraw.css';
 
 const URL = import.meta.env.VITE_WS_URL;
+const tldrawkey =  import.meta.env.VITE_TLDRAW_KEY;
 
 interface User { id: string; name: string; }
 
@@ -251,7 +252,7 @@ function flushUpdates() {
 
       {/* the canvas */}
       <div style={{ height: '100%' } }onMouseUp={() => logMouseUp()}>
-  <Tldraw store={store}  />
+  <Tldraw store={store} licenseKey={import.meta.env.VITE_TLDRAW_KEY}  />
       </div>
     </div>
   );
