@@ -28,6 +28,7 @@ const Room = () => {
 
 
   useEffect(() => {
+    console.log(URL);
     if (!roomId) {
       alert('No roomId provided');
       return;

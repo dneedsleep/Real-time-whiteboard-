@@ -23,7 +23,7 @@ function broadcastToRoom(roomId, obj, exceptWs = null) {
   const msg = JSON.stringify(obj);
   const exceptUserId = exceptWs?.userId; 
   wss.clients.forEach((client) => {
-    if (client.readyState !== WebSocket.OPEN) return;
+
     if (client.roomId !== roomId) return;
     if (exceptUserId && client.userId === exceptUserId) return; 
     try { client.send(msg); } catch (e) { console.error('Error broadcasting to client:', e); }
