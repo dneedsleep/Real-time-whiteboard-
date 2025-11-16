@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { createTLStore, Tldraw } from 'tldraw';
 import 'tldraw/tldraw.css';
 
-const URL = process.env.VITE_WS_URL ;
+const URL = import.meta.env.VITE_WS_URL;
 
 interface User { id: string; name: string; }
 
