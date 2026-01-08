@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Copy, Check } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { v4 as uuidv4, v6 as uuidv6 } from 'uuid';
+
 
 interface CreateRoomDialogProps {
   open: boolean;
@@ -19,7 +21,7 @@ export const CreateRoomDialog = ({ open, onOpenChange }: CreateRoomDialogProps) 
   const [copied, setCopied] = useState(false);
 
   const generateRoomCode = () => {
-    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const code = uuidv4();
     setRoomCode(code);
     toast({
       title: "Room created!",

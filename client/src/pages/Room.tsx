@@ -1,11 +1,13 @@
+import { constructNow } from 'date-fns';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { createTLStore, Tldraw } from 'tldraw';
 import 'tldraw/tldraw.css';
 
-const URL = import.meta.env.VITE_WS_URL;
-const tldrawkey =  import.meta.env.VITE_TLDRAW_KEY;
 
+//const URL = import.meta.env.VITE_WS_URL;
+const URL =  'ws://localhost:8081';
+const tldrawkey =  import.meta.env.VITE_TLDRAW_KEY;
 interface User { id: string; name: string; }
 
 
@@ -43,7 +45,7 @@ const Room = () => {
     ws.addEventListener('open', () => {
       console.log('WebSocket open');
       setIsConnected(true);
-      ws.send(JSON.stringify({ type: 'join', name: userName }));
+      ws.send(JSON.stringify({ type: 'join', name: userName ,}));
       
     });
 
@@ -52,12 +54,12 @@ const Room = () => {
       setIsConnected(false);
     });
 
-    // We apply remote updates immediately. `applyingRemoteRef` prevents
-    // the store.listen handler from re-sending these changes back to server.
+
 
     ws.addEventListener('message', async (event) => {
       try {
         let text: string;
+        console.log(typeof event.data);
         if (typeof event.data === 'string') text = event.data;
         else if (event.data instanceof Blob) text = await event.data.text();
         else if (event.data instanceof ArrayBuffer) text = new TextDecoder().decode(event.data);
@@ -82,7 +84,7 @@ const Room = () => {
             applyingRemoteRef.current = false;
           }
         } else {
-          console.warn('Unknown message type:', msg);
+          alert(`Unknown message type: ${msg}`);
         }
       } catch (err) {
         console.error('Failed to parse WS message', err);
@@ -95,22 +97,20 @@ const Room = () => {
     };
   }, []);
   
-  // Buffer to collect shape updates before sending
 const updateBuffer = useRef<any[]>([]);
 const deleteBuffer = useRef<string[]>([]);
 const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-// Debounce function to send updates
 function flushUpdates() {
   const ws = socketRef.current;
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
   if (updateBuffer.current.length > 0) {
-    ws.send(JSON.stringify({ type: 'update', shapes: updateBuffer.current }));
+    ws.send(JSON.stringify({ type: 'update', shapes: updateBuffer.current , }));
     updateBuffer.current = [];
   }
   if (deleteBuffer.current.length > 0) {
-    ws.send(JSON.stringify({ type: 'remove', shapeIds: deleteBuffer.current }));
+    ws.send(JSON.stringify({ type: 'remove', shapeIds: deleteBuffer.current , }));
     deleteBuffer.current = [];
   }
 }
@@ -145,7 +145,7 @@ function flushUpdates() {
       deleteBuffer.current.push(rec?.id ?? id);
     }
 
-    // Debounce: wait 100ms after last change before sending
+    //  wait 100ms after last change before sending
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => flushUpdates(), 100);
   });
@@ -157,10 +157,10 @@ function flushUpdates() {
   // Render
   return (
     <div style={{ position: 'relative', height: '100vh' }} >
-      {/* Top center controls */}
+
       <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, display: 'flex', gap: 8 , color:'black' }}>
         <button
-          onClick={() => { sessionStorage.removeItem('username'); navigate('/'); }}
+          onClick={() => { sessionStorage.removeItem('username'); navigate('/index'); }}
           style={{
             padding: '8px 12px',
             borderRadius: 8,

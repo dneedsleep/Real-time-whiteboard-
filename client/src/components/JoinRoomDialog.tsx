@@ -70,9 +70,8 @@ export const JoinRoomDialog = ({ open, onOpenChange }: JoinRoomDialogProps) => {
               id="room-code"
               placeholder="Enter room code"
               value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+              onChange={(e) => setRoomCode(e.target.value)}
               className="bg-input border-border text-foreground placeholder:text-muted-foreground font-mono"
-              maxLength={6}
             />
           </div>
 
