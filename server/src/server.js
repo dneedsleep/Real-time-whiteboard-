@@ -10,6 +10,7 @@ const {connectDB} = require('./config.js/dbconnection.js');
 connectDB();
 
 const loginRoute = require('./Routes/Auth');
+const RoomRoute = require('./Routes/Room.js');
 const { setupWebSocket } = require('./util/ws');
 const { protectRoute } = require('./middleware/auth.middleware.js');
 
@@ -20,7 +21,7 @@ const PORT = process.env.PORT || 8081;
 // middleware part
 
 app.use(express.urlencoded({extended:true}));
-app.use(protectRoute)
+//app.use(protectRoute)
 app.use(express.json());
 app.use(cookieParser())
 app.use(cors({
@@ -30,7 +31,7 @@ app.use(cors({
 // routes
 
 app.use('/auth',loginRoute);
-
+app.use('/room',RoomRoute)
 
 
 

@@ -1,5 +1,10 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const { getRoomInfo, bulkUpdate } = require('../controllers/room');
+
+
+
+
 
 function setupWebSocket(server) {
   const wss = new WebSocket.Server({ server });
@@ -7,10 +12,34 @@ function setupWebSocket(server) {
   // rooms: roomId -> { users: Map<userId, name>, shapes: Map<shapeId, shape> }
   const rooms = new Map();
 
-  function ensureRoom(roomId) {
+  let isbackUpPending = false;
+  setInterval(async () => {
+    if (isbackUpPending) return;
+
+    isbackUpPending = true;
+
+    const updates = Array.from(rooms.entries()).map(
+      ([roomId, roomInfo]) => ({ roomId:roomId, shapes:  roomInfo.shapes })
+    );
+    console.log(updates)
+
+    
+
+    // auto update it 
+
+    await bulkUpdate(updates).finally(isbackUpPending  = false);
+
+
+  }, 5000)
+
+  async function ensureRoom(roomId) {
+
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, { users: new Map(), shapes: new Map() });
+      const shapesInfo = await getRoomInfo(roomId);
+      rooms.set(roomId, { users: new Map(), shapes: shapesInfo });
     }
+
+
     return rooms.get(roomId);
   }
 
@@ -31,19 +60,19 @@ function setupWebSocket(server) {
     });
   }
 
-  function broadcastUsers(roomId) {
-    const room = ensureRoom(roomId);
+  async function broadcastUsers(roomId) {
+    const room = await ensureRoom(roomId);
     const users = Array.from(room.users.entries())
       .map(([id, name]) => ({ id, name }));
 
     broadcastToRoom(roomId, { type: 'users', users });
   }
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', async (ws, req) => {
     const parts = (req.url || '/').split('/').filter(Boolean);
     ws.roomId = parts[0] || 'default-room';
 
-    const room = ensureRoom(ws.roomId);
+    const room = await ensureRoom(ws.roomId);
 
     ws.userId = crypto.randomUUID();
     ws.userName = 'Anonymous';
@@ -67,7 +96,7 @@ function setupWebSocket(server) {
 
           safeSend(ws, {
             type: 'init',
-            shapes: Array.from(room.shapes.values()),
+            shapes: Object.values(room.shapes),
             id: userId
           });
 
@@ -77,14 +106,23 @@ function setupWebSocket(server) {
 
         case 'update': {
           if (!Array.isArray(data.shapes)) return;
-          data.shapes.forEach(s => s?.id && room.shapes.set(s.id, s));
+
+          data.shapes.forEach(s=>{
+            if(!s?.id) return ;
+            room.shapes[s.id] = s;
+          })
+
           broadcastToRoom(ws.roomId, { type: 'update', shapes: data.shapes }, ws);
           break;
         }
 
         case 'remove': {
           if (!Array.isArray(data.shapeIds)) return;
-          data.shapeIds.forEach(id => room.shapes.delete(id));
+          data.shapeIds.forEach(id => 
+          {
+            delete room.shapes[id];
+          }
+          );
           broadcastToRoom(ws.roomId, { type: 'remove', shapeIds: data.shapeIds }, ws);
           break;
         }
@@ -94,8 +132,15 @@ function setupWebSocket(server) {
     ws.on('close', () => {
       room.users.delete(ws.userId);
       broadcastUsers(ws.roomId);
+      if (room.users.size == 0) {
+        // update the room
+
+        // then remove the remove from map
+        rooms.delete(roomId);
+        console.log(`deleted Room id ${roomId}`);
+      }
     });
   });
 }
 
-module.exports = {setupWebSocket};
+module.exports = { setupWebSocket };

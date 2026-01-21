@@ -160,7 +160,10 @@ function flushUpdates() {
 
       <div style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 1000, display: 'flex', gap: 8 , color:'black' }}>
         <button
-          onClick={() => { sessionStorage.removeItem('username'); navigate('/index'); }}
+          onClick={() => { 
+            sessionStorage.removeItem('username'); 
+            navigate('/index'); 
+          }}
           style={{
             padding: '8px 12px',
             borderRadius: 8,

@@ -20,8 +20,17 @@ export const CreateRoomDialog = ({ open, onOpenChange }: CreateRoomDialogProps) 
   const [roomCode, setRoomCode] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const generateRoomCode = () => {
-    const code = uuidv4();
+  const generateRoomCode = async () => {
+    const res = await fetch('http://localhost:8081/room/create',{
+      method:"GET",
+      headers: {
+          "Content-Type": "application/json",
+      },
+    });
+    const data = await res.json();
+    console.log(data);
+    const code = data.Id;
+    
     setRoomCode(code);
     toast({
       title: "Room created!",
