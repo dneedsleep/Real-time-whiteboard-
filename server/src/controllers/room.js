@@ -1,36 +1,31 @@
 const Room = require('../models/room');
+const Counter = require('../models/counter')
+
+
 
 async function createRoomId(req, res) {
-
-
-    // generating unique 6 digit id 
-
-
-    function generateId(){
-         let id = Math.floor(Math.random() * 900000) + 100000;
-         return id;
-    }
-
-    // check with db
-    let permaId ;
-    let cnt = 900001;
-    while(cnt--){
-        const id = generateId();
-        const roomID = await Room.findOne({roomId:id});
-        if(!roomID){
-            permaId = id;
-            break;
+    let roomId;
+    await Counter.findOneAndUpdate(
+        { id: "autoval" },
+        { "$inc": { "seq": 1 } },
+        { new: true }
+    ).then(async function (cd) {
+        if (cd == null) {
+            const newVal = new Counter({ id: "autoval", seq: 1 });
+            newVal.save();
+            roomId = 1
+        } else {
+            roomId = cd.seq;
         }
-    }
+    }).catch(function(err){res.status(500).json({err:err});
+    })
+        
 
-    // not the best method will add caching later
+    res.status(201).json({ Id: roomId });
 
-    if(cnt == 0){
-        return res.status(500).json({msg:"Sorry no more rooms availabe will fix it shortly"});
-    }
-
-    return res.status(201).json({ Id: permaId });
 }
+
+
 async function getRoomInfo(roomId) {
     const room = await Room.findOne({ roomId });
     return room?.shapes || {};
