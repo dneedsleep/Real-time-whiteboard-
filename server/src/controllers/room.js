@@ -17,17 +17,18 @@ async function createRoomId(req, res) {
         } else {
             roomId = cd.seq;
         }
-    }).catch(function(err){res.status(500).json({err:err});
+    }).catch(function (err) {
+        res.status(500).json({ err: err });
     })
-        
 
+    console.log(roomId);
     res.status(201).json({ Id: roomId });
 
 }
 
 
 async function getRoomInfo(roomId) {
-    const room = await Room.findOne({ roomId });
+    const room = await Room.findOne({ roomId:roomId });
     return room?.shapes || {};
 }
 
@@ -37,14 +38,14 @@ async function bulkUpdate(updates) {
         await Promise.all(
             updates.map(({ roomId, shapes }) =>
                 Room.findOneAndUpdate(
-                    { roomId },
+                    { roomId:roomId},
                     { $set: { shapes } },
                     { upsert: true, new: true }
                 )
 
             )
         );
-        console.log('Updated successfully');
+        //console.log('Updated successfully');
     } catch (err) {
         console.error('Bulk update error:', err);
     }

@@ -19,7 +19,7 @@ async function signup(req, res) {
     const ifExist = await User.findOne({ email });
     if(ifExist){
         console.log("User already exists with email:", email);
-        return res.status(401).json({msg:"Already exist"});
+        return res.status(409).json({msg:"Already exist"});
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -30,8 +30,10 @@ async function signup(req, res) {
 
     const token = jwt.sign({userId:user._id , email:email} , process.env.JWT_SECRET , {expiresIn:"3h"});
     res.cookie('token',token ,{
-        httpOnly:true,
-        secure:false
+        httpOnly: true,
+        secure: false,
+        sameSite:"lax",
+        maxAge: 24* 60 * 60 * 1000,
     })
     return res.status(200).json({token , user: {id:user._id , email:email}});
     }
@@ -60,7 +62,7 @@ async function login(req, res) {
         return res.status(401).json({ msg: "No user found" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    //const hashedPassword = await bcrypt.hash(password, 10);
 
     const isMatch = await bcrypt.compare(password, exist.password);
     if (!isMatch) {
@@ -73,7 +75,9 @@ async function login(req, res) {
         { expiresIn: '3h' });
     res.cookie('token', token, {
         httpOnly: true,
-        secure: false
+        secure: false,
+        sameSite:"lax",
+        maxAge: 24* 60 * 60 * 1000,
     })
     
      return res.status(201).json({

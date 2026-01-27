@@ -2,12 +2,14 @@ const jwt = require('jsonwebtoken');
 
 const protectRoute = async(req,res,next)=>{
     try{
-        console.log(req);
-        if(req.path =='/auth'){
+        const path = req.path;
+        //console.log(path);
+        if(path.includes('/auth')){
             console.log("Auth route, skipping protection");
-            next();
+            return next();
         }
         const token = req?.cookies?.token;
+        console.log(token);
         if(!token){
             return res.status(401).json({msg:'Unauthorized access'})
         }

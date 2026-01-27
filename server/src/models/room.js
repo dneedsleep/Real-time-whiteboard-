@@ -6,9 +6,8 @@ const roomSchema = new mongoose.Schema({
         unique:true,
     },
     shapes:{
-        type:Map,
-        of:mongoose.Schema.Types.Mixed,
-        default:{}
+        type: mongoose.Schema.Types.Mixed,
+
     }
 },{timestamps:true});
 

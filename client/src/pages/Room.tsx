@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { createTLStore, Tldraw } from "tldraw";
+import type { WebSocketExt } from '../typings/index'
 import "tldraw/tldraw.css";
 
 const WS_URL = "ws://localhost:8081";
@@ -8,8 +9,11 @@ const WS_URL = "ws://localhost:8081";
 export default function Room() {
   const { roomId } = useParams();
   const store = useMemo(() => createTLStore(), []);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<WebSocketExt | null>(null);
   const [connected, setConnected] = useState(false);
+  const HEARTBEAT_TIMEOUT = 1000 * 4;
+  const HEARTBEAT_VALUE = 1;
+
 
   const username =
     sessionStorage.getItem("username") ||
@@ -17,8 +21,32 @@ export default function Room() {
 
   // connect websocket
   useEffect(() => {
-    const ws = new WebSocket(`${WS_URL}/${roomId}`);
+    let ws: WebSocketExt;
+    ws = new WebSocket(`${WS_URL}/${roomId}`);
     wsRef.current = ws;
+
+    function heartbeat() {
+      if (!ws) {
+        return;
+      }
+      if (!!ws.pingTimeout) {
+        clearTimeout(ws.pingTimeout);
+      }
+
+      const data = new Uint8Array(1);
+      data[0] = HEARTBEAT_VALUE;
+      console.log('received')
+      ws.send(data);
+
+      ws.pingTimeout = setTimeout(() => {
+        ws.close()
+      }, HEARTBEAT_TIMEOUT)
+
+    }
+
+    function isBinary(obj: any) {
+        return typeof obj === 'object' && Object.prototype.toString.call(obj) === '[object Blob]';
+    }
 
     ws.onopen = () => {
       setConnected(true);
@@ -26,20 +54,31 @@ export default function Room() {
     };
 
     ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-
-      if (msg.type === "init" || msg.type === "update") {
-        store.put(msg.shapes);
+      if (isBinary(event.data)) {
+        console.log('isBinary is working')
+        heartbeat();
       }
+      else {
+        const msg = JSON.parse(event.data);
 
-      if (msg.type === "remove") {
-        store.remove(msg.shapeIds);
+        if (msg.type === "init" || msg.type === "update") {
+          store.put(msg.shapes);
+        }
+
+        if (msg.type === "remove") {
+          store.remove(msg.shapeIds);
+        }
       }
     };
 
-    ws.onclose = () => setConnected(false);
+    ws.onclose = () => {
+      setConnected(false);
+      if (!!ws.pingTimeout) {
+        clearTimeout(ws.pingTimeout);
+      }
+    }
 
-    return () => ws.close();
+    return (() => ws.close());
   }, [roomId]);
 
   // listen to local drawing changes
