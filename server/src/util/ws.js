@@ -1,170 +1,155 @@
 const WebSocket = require('ws');
 const crypto = require('crypto');
+const { redis, pub, sub } = require('./redis');
 const { getRoomInfo, bulkUpdate } = require('../controllers/room');
 
-const HEARTBEAT_INTERVAL = 1000 * 2 // 10 sec;
+const HEARTBEAT_INTERVAL = 2000;
 const HEARTBEAT_VALUE = 1;
-
-function ping(ws) {
-  console.log('ping');
-  ws.send(Buffer.from([HEARTBEAT_VALUE]));
-
-}
+const SERVER_ID = crypto.randomUUID();
 
 function setupWebSocket(server) {
   const wss = new WebSocket.Server({ server });
 
-  // rooms: roomId -> { users: Map<userId, name>, { shapes: { [shapeId] ; shape}} } 
+  // local cache (per server)
   const rooms = new Map();
 
-  let isbackUpPending = false;
-  setInterval(async () => {
-    if (isbackUpPending) return;
+  /* ---------------- REDIS SUB ---------------- */
 
-    isbackUpPending = true;
+  sub.psubscribe('room:*');
 
-    const updates = Array.from(rooms.entries()).map(
-      ([roomId, roomInfo]) => ({ roomId: roomId, shapes: roomInfo.shapes })
-    );
+  sub.on('pmessage', (pattern, channel, message) => {
+    try {
+      const { payload, exceptUserId } = JSON.parse(message);
+      const roomId = channel.replace('room:', '');
+
+      wss.clients.forEach(client => {
+        if (client.roomId !== roomId) return;
+        if (client.userId === exceptUserId) return; // skip sender
+        if (client.readyState !== WebSocket.OPEN) return;
+
+        client.send(JSON.stringify(payload));
+      });
+    } catch (err) {
+      console.error('Redis message parse error:', err);
+    }
+  });
 
 
-    // auto update it 
-
-    await bulkUpdate(updates).finally(() => { isbackUpPending = false });
-
-
-  }, 5000)
+  /* ---------------- ROOM UTILS ---------------- */
 
   async function ensureRoom(roomId) {
-
     if (!rooms.has(roomId)) {
-      const shapesInfo = await getRoomInfo(roomId);
-      rooms.set(roomId, { users: new Map(), shapes: shapesInfo || {} });
-      //console.log(shapesInfo)
+      const shapes = await getRoomInfo(roomId);
+      rooms.set(roomId, {
+        users: new Map(),
+        shapes: shapes || {}
+      });
     }
-
-
     return rooms.get(roomId);
   }
 
-  function safeSend(ws, obj) {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(obj));
-    }
+  function broadcastRedis(roomId, payload, exceptUserId) {
+    pub.publish(
+      `room:${roomId}`,
+      JSON.stringify({ roomId, payload, exceptUserId })
+    );
   }
 
-  function broadcastToRoom(roomId, obj, exceptWs = null) {
-    const exceptUserId = exceptWs?.userId;
-
-    wss.clients.forEach(client => {
-      if (client.roomId !== roomId) return;
-      if (exceptUserId && client.userId === exceptUserId) return;
-      safeSend(client, obj);
-    });
-  }
-
-  async function broadcastUsers(roomId) {
-    const room = await ensureRoom(roomId);
-    const users = Array.from(room.users.entries())
-      .map(([id, name]) => ({ id, name }));
-
-    broadcastToRoom(roomId, { type: 'users', users });
-  }
+  /* ---------------- WS HANDLER ---------------- */
 
   wss.on('connection', async (ws, req) => {
+    const roomId = (req.url || '/')
+      .replace(/^\/ws/, '')
+      .replace(/^\//, '');
+
+    ws.roomId = roomId;
+    ws.userId = crypto.randomUUID();
     ws.isAlive = true;
-    const parts = (req.url || '/').split('/').filter(Boolean);
-    ws.roomId = parts[0] || 'default-room';
 
-    const room = await ensureRoom(ws.roomId);
+    const room = await ensureRoom(roomId);
 
-    ws.userName = 'Anonymous';
-
-    ws.on('message', (raw, isBinary) => {
-      if (isBinary && raw[0] == HEARTBEAT_VALUE) {
-        console.log('pong');
+    ws.on('message', async (raw, isBinary) => {
+      if (isBinary && raw[0] === HEARTBEAT_VALUE) {
         ws.isAlive = true;
+        return;
       }
-      else {
-        let data;
-        try {
-          data = JSON.parse(raw);
-        } catch {
-          return;
-        }
 
-        switch (data.type) {
-          case 'join': {
-            const name = data.name?.trim() || 'Anonymous';
-            const userId = crypto.randomUUID();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        return;
+      }
 
-            ws.userId = userId;
-            ws.userName = name;
-            room.users.set(userId, name);
+      if (data.type === 'join') {
+        room.users.set(ws.userId, data.name);
 
-            safeSend(ws, {
-              type: 'init',
-              shapes: Object.values(room.shapes),
-              id: userId
-            });
+        ws.send(JSON.stringify({
+          type: 'init',
+          shapes: Object.values(room.shapes),
+          id: ws.userId
+        }));
+      }
 
-            broadcastUsers(ws.roomId);
-            break;
-          }
+      if (data.type === 'update') {
+        data.shapes.forEach(s => {
+          room.shapes[s.id] = s;
+        });
 
-          case 'update': {
-            if (!Array.isArray(data.shapes)) return;
-            console.log(data);
-            data.shapes.forEach(s => {
-              if (!s?.id) return;
-              room.shapes[s.id] = s;
-            })
+        broadcastRedis(roomId, {
+          type: 'update',
+          shapes: data.shapes
+        }, ws.userId);
+      }
 
-            broadcastToRoom(ws.roomId, { type: 'update', shapes: data.shapes }, ws);
-            break;
-          }
+      if (data.type === 'remove') {
+        data.shapeIds.forEach(id => delete room.shapes[id]);
 
-          case 'remove': {
-            if (!Array.isArray(data.shapeIds)) return;
-            data.shapeIds.forEach(id => {
-              delete room.shapes[id];
-            }
-            );
-            broadcastToRoom(ws.roomId, { type: 'remove', shapeIds: data.shapeIds }, ws);
-            break;
-          }
-        }
+        broadcastRedis(roomId, {
+          type: 'remove',
+          shapeIds: data.shapeIds
+        }, ws.userId);
       }
     });
 
     ws.on('close', () => {
       room.users.delete(ws.userId);
-      broadcastUsers(ws.roomId);
-      if (room.users.size == 0) {
-        // update the room
-
-        // then remove the remove from map
-        //rooms.delete(roomId);
-        //console.log(`deleted Room id ${roomId}`);
-      }
     });
   });
 
-  const interval = setInterval(() => {
-    console.log('firing interval')
-    wss.clients.forEach(client => {
-      if (!client.isAlive) {
-        client.terminate();
+  /* ---------------- HEARTBEAT ---------------- */
+
+  setInterval(() => {
+    wss.clients.forEach(ws => {
+      if (!ws.isAlive) return ws.terminate();
+      ws.isAlive = false;
+      ws.send(Buffer.from([HEARTBEAT_VALUE]));
+    });
+  }, HEARTBEAT_INTERVAL);
+
+  /* ---------------- SAFE BULK BACKUP ---------------- */
+
+  setInterval(async () => {
+    const lock = await redis.set('whiteboard:backup_lock', SERVER_ID, 'NX', 'PX', 4000);
+
+    if (!lock) return;
+
+    try {
+      const updates = Array.from(rooms.entries()).map(
+        ([roomId, data]) => ({
+          roomId,
+          shapes: data.shapes
+        })
+      );
+
+      await bulkUpdate(updates);
+    } finally {
+      const val = await redis.get('whiteboard:backup_lock');
+      if (val === SERVER_ID) {
+        await redis.del('whiteboard:backup_lock');
       }
-
-      client.isAlive = false;
-      ping(client);
-    })
-  }, HEARTBEAT_INTERVAL)
-
-  wss.on('close',()=>{
-    clearInterval(interval);
-  })
+    }
+  }, 5000);
 }
 
 module.exports = { setupWebSocket };

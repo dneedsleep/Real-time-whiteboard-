@@ -34,21 +34,17 @@ async function getRoomInfo(roomId) {
 
 
 async function bulkUpdate(updates) {
-    try {
-        await Promise.all(
-            updates.map(({ roomId, shapes }) =>
-                Room.findOneAndUpdate(
-                    { roomId:roomId},
-                    { $set: { shapes } },
-                    { upsert: true, new: true }
-                )
+  if (!updates.length) return;
 
-            )
-        );
-        //console.log('Updated successfully');
-    } catch (err) {
-        console.error('Bulk update error:', err);
+  const ops = updates.map(({ roomId, shapes }) => ({
+    updateOne: {
+      filter: { roomId },
+      update: { $set: { shapes } },
+      upsert: true
     }
+  }));
+
+  await Room.bulkWrite(ops);
 }
 
 
