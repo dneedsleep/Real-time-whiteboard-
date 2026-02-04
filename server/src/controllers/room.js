@@ -29,6 +29,7 @@ async function createRoomId(req, res) {
 
 async function getRoomInfo(roomId) {
     const room = await Room.findOne({ roomId:roomId });
+    if(!room) return "No room found"; 
     return room?.shapes || {};
 }
 

@@ -38,6 +38,7 @@ function setupWebSocket(server) {
 
     if (!rooms.has(roomId)) {
       const shapesInfo = await getRoomInfo(roomId);
+      if(shapesInfo == "No room found") return false;
       rooms.set(roomId, { users: new Map(), shapes: shapesInfo || {} });
       //console.log(shapesInfo)
     }
@@ -64,6 +65,7 @@ function setupWebSocket(server) {
 
   async function broadcastUsers(roomId) {
     const room = await ensureRoom(roomId);
+    if(room  == false) return;
     const users = Array.from(room.users.entries())
       .map(([id, name]) => ({ id, name }));
 
@@ -76,7 +78,7 @@ function setupWebSocket(server) {
     ws.roomId = parts[0] || 'default-room';
 
     const room = await ensureRoom(ws.roomId);
-
+    if(room == false) return ;
     ws.userName = 'Anonymous';
 
     ws.on('message', (raw, isBinary) => {

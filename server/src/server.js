@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 8081;
 // middleware part
 
 app.use(express.urlencoded({extended:true}));
-//app.use(protectRoute)
+app.use(protectRoute)
 app.use(express.json());
 app.use(cookieParser())
 app.use(cors({
