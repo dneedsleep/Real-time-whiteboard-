@@ -4,8 +4,7 @@ import { createTLStore, Tldraw } from "tldraw";
 import type { WebSocketExt } from '../typings/index'
 import "tldraw/tldraw.css";
 
-const WS_URL = "ws://localhost/ws/" ;
-
+const WS_URL = "ws://localhost:8081";
 
 export default function Room() {
   const { roomId } = useParams();
